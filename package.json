@@ -1,6 +1,6 @@
 {
   "name": "@skvil/piertotum",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MCP + HTTP broker for multi-instance Claude Code communication",
   "type": "module",
   "license": "MIT",

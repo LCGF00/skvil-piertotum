@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Skvil-Piertotum** is a two-component system that lets multiple Claude Code instances communicate over HTTP. A central broker (`broker.js`) holds all state in memory and exposes a REST API. Each Claude Code instance runs `mcp-server.js` as an MCP stdio server, which registers with the broker and exposes 11 tools for sending/receiving messages and sharing context. Optionally, the MCP server can process incoming messages autonomously via MCP Sampling.
+**Skvil-Piertotum** is a two-component system that lets multiple Claude Code instances communicate over HTTP. A central broker (`broker.js`) holds all state in memory and exposes a REST API. Each Claude Code instance runs `mcp-server.js` as an MCP stdio server, which registers with the broker and exposes 10 tools for sending/receiving messages and sharing context.
 
 ## Running the Project
 
@@ -20,9 +20,6 @@ node broker.js 5000
 
 # Start MCP server manually (normally Claude Code launches it)
 BROKER_URL=http://localhost:4800 AGENT_ID=api AGENT_NAME="API Server" PROJECT_NAME=myproject node mcp-server.js
-
-# With autonomous processing enabled
-AUTO_PROCESS=true POLL_INTERVAL_MS=10000 BROKER_URL=http://localhost:4800 AGENT_ID=api node mcp-server.js
 ```
 
 No test or lint scripts are defined.
@@ -35,9 +32,6 @@ Broker terminal (operator types commands/messages)
         ▼
    broker.js :4800  ◄──── HTTP ────►  mcp-server.js (Instance A)
    (in-memory state)                   mcp-server.js (Instance B)
-                                        │
-                                        └─ AUTO_PROCESS=true:
-                                           poll → createMessage → ack → reply
 ```
 
 **`broker.js`** — Express HTTP server. Holds agents, message queues (Map per agentId), and shared context (key/value Map) entirely in memory. Also runs a readline console: plain text broadcasts to all agents, `@agentId message` targets one, `/agents` and `/help` are available commands.
@@ -54,8 +48,6 @@ Broker terminal (operator types commands/messages)
 | `AGENT_ID` | hostname (sanitized) | Unique ID per instance — must differ across terminals |
 | `AGENT_NAME` | `SP-{id}` | Display name |
 | `PROJECT_NAME` | `unknown` | Project grouping |
-| `AUTO_PROCESS` | `false` | Enable autonomous processing via MCP Sampling |
-| `POLL_INTERVAL_MS` | `10000` | Polling interval when `AUTO_PROCESS=true` (clamped to min 1000ms) |
 
 ### Broker (`broker.js`)
 
@@ -76,7 +68,7 @@ claude mcp add skvil-piertotum \
 
 Each terminal must have a unique `AGENT_ID`. Find the broker IP with `hostname -I` (Linux/WSL) or `ipconfig` (Windows).
 
-## MCP Tools (11 total)
+## MCP Tools (10 total)
 
 | Tool | Purpose |
 |---|---|
@@ -89,27 +81,7 @@ Each terminal must have a unique `AGENT_ID`. Find the broker IP with `hostname -
 | `sp_set_context` | Save shared data — value is always string (use JSON.stringify for objects) |
 | `sp_get_context` | Read shared data by key |
 | `sp_list_contexts` | List all context keys |
-| `sp_status` | Broker status: formatted uptime, agents, autonomous mode state + disable reason |
-| `sp_auto_process` | Toggle autonomous sampling mode at runtime |
-
-## Autonomous Mode (MCP Sampling)
-
-When `AUTO_PROCESS=true`, `pollAndProcess()` runs every `POLL_INTERVAL_MS`:
-
-1. Checks client capabilities — if sampling not supported, disables itself and records reason in `autoProcessStatusReason`
-2. Fetches up to 10 unread messages from the broker
-3. For each message in order:
-   - Sets `{AGENT_ID}-status` context to `busy | task: ... | início: HH:MM:SS`
-   - Calls `server.server.createMessage()` with the message wrapped in XML nonce delimiters (prompt injection protection)
-   - Sends Claude's response back to the sender
-   - Sets status back to `idle`
-   - ACKs the message individually via `POST /messages/:agentId/ack`
-4. Even on processing errors, the message is ACKed to prevent poison message loops
-5. Breaks the loop early if autonomous mode is self-disabled mid-batch
-
-Only one poll runs at a time (`isProcessing` flag set before the first `await`). RESET messages (`/^RESET[\s:]/`) skip sampling and reply with `RESET ACK` immediately.
-
-The `sp_auto_process` tool toggles this at runtime. The disable reason is visible in `sp_status` output.
+| `sp_status` | Broker status: formatted uptime, agents, unread counts, context count |
 
 ## Orchestrator/Worker Status Convention
 
@@ -127,7 +99,7 @@ Orchestrators should call `sp_get_context("{agent_id}-status")` before delegatin
 - **Stale agent reaper** — runs every 30s; removes agents with no heartbeat for >90s (3 missed intervals). `sp_list_agents` flags agents >60s as stale before the reaper removes them.
 - **ES modules** — both files use `import/export` (`"type": "module"` in `package.json`).
 - **Message types enum** — `text`, `code`, `schema`, `endpoint`, `config`. Type `broadcast` was intentionally removed (was dead code).
-- **Broker operator messages** — `from: "broker"` / `fromName: "Operador"`. Autonomous mode processes them but never replies (broker is not a registered agent).
+- **Broker operator messages** — `from: "broker"` / `fromName: "Operador"`.
 - **Fetch timeout** — all broker calls: 5s via `AbortSignal.timeout`; deregister on shutdown: 3s.
 - **BROKER_URL validation** — checked on startup; non-http/https protocols cause immediate exit with a clear error.
 

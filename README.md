@@ -9,7 +9,7 @@
 
 **Let your Claude Code instances talk to each other.**
 
-Skvil-Piertotum is a lightweight MCP + HTTP broker that connects multiple Claude Code terminals — across projects, machines, WSL, or VMs — so they can exchange messages, share context, and even delegate tasks autonomously.
+Skvil-Piertotum is a lightweight MCP + HTTP broker that connects multiple Claude Code terminals — across projects, machines, WSL, or VMs — so they can exchange messages and share context.
 
 ```
 Claude Code (API project)          Claude Code (Frontend project)
@@ -37,9 +37,7 @@ Two components, zero infrastructure:
 
 **`broker.js`** — a tiny Express HTTP server that holds all state in memory (agents, message queues, shared key/value context). Run it once on any machine in your network.
 
-**`mcp-server.js`** — an MCP stdio server that runs inside each Claude Code instance. It auto-registers on startup, heartbeats every 30s, and exposes 11 tools so Claude can send/receive messages and share data with other instances.
-
-When `AUTO_PROCESS=true`, the MCP server polls for incoming messages and uses **MCP Sampling** (`createMessage`) to inject them directly into Claude's context — enabling fully autonomous agent-to-agent workflows without human intervention.
+**`mcp-server.js`** — an MCP stdio server that runs inside each Claude Code instance. It auto-registers on startup, heartbeats every 30s, and exposes 10 tools so Claude can send/receive messages and share data with other instances.
 
 ---
 
@@ -195,8 +193,7 @@ Show broker status with all connected agents and their unread message counts.
 | `sp_set_context` | Save shared data by key (schema, config, endpoints, etc.) |
 | `sp_get_context` | Read shared data by key |
 | `sp_list_contexts` | List all available context keys |
-| `sp_status` | Broker status: uptime, agents, unread counts, autonomous mode state |
-| `sp_auto_process` | Toggle autonomous message processing at runtime |
+| `sp_status` | Broker status: uptime, agents, unread counts, context count |
 
 ---
 
@@ -210,38 +207,12 @@ Show broker status with all connected agents and their unread message counts.
 | `AGENT_ID` | machine hostname | Unique identifier for this instance — **must differ per terminal** |
 | `AGENT_NAME` | `SP-{id}` | Human-readable display name |
 | `PROJECT_NAME` | `unknown` | Used for grouping agents by project |
-| `AUTO_PROCESS` | `false` | Set to `true` to enable autonomous message processing via MCP Sampling |
-| `POLL_INTERVAL_MS` | `10000` | Polling interval in ms when `AUTO_PROCESS=true` (minimum: 1000) |
 
 ### Broker (`broker.js`)
 
 | Variable | Default | Description |
 |---|---|---|
 | `BROKER_PORT` | `4800` | Port to listen on (also accepts first CLI argument) |
-
----
-
-## Autonomous Mode
-
-When `AUTO_PROCESS=true`, the MCP server polls for unread messages and uses **MCP Sampling** to process them without human input:
-
-1. Polls the broker every `POLL_INTERVAL_MS` for unread messages
-2. For each message: marks itself `busy`, calls `createMessage()` with the message injected into Claude's context
-3. Sends Claude's response back to the original sender
-4. Marks itself `idle` and ACKs the message
-
-Enable it at startup via env var, or toggle it at runtime with `sp_auto_process`:
-
-```
-Enable autonomous processing mode
-```
-
-Agents broadcast their availability via shared context under `{AGENT_ID}-status`:
-- `idle` — ready to receive tasks
-- `busy | task: ... | início: HH:MM:SS` — working
-- `offline` — gracefully shut down
-
-> **Requirements:** The Claude Code client must support MCP Sampling. If it doesn't, the mode disables itself automatically and reports the reason in `sp_status`.
 
 ---
 
@@ -304,7 +275,6 @@ GET    /status                      Broker overview
 - **Resource limits** — max 100 agents, 200 messages per queue (oldest dropped), 1000 context keys, 100 KB per context value, 512 KB per message.
 - **Stale agent cleanup** — agents that miss 3 heartbeats (90s) are automatically removed.
 - **Message types** — `text`, `code`, `schema`, `endpoint`, `config`. Used by agents to route and handle responses appropriately.
-- **Prompt injection protection** — in autonomous mode, incoming message content is wrapped in XML tags with a random nonce before being injected into Claude's context.
 - **ES modules** — both files use `import/export` (`"type": "module"` in `package.json`).
 
 ---
