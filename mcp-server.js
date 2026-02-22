@@ -19,6 +19,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import os from 'os';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PKG_VERSION = (() => {
+  try { return JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8')).version; }
+  catch { return '0.0.0'; }
+})();
 
 // ══════════════════════════════════════════════
 // Validação de configuração na inicialização
@@ -38,7 +47,7 @@ function validateBrokerUrl(raw) {
   }
 }
 
-const BROKER_URL   = validateBrokerUrl(process.env.BROKER_URL || 'http://localhost:4800');
+const BROKER_URL   = validateBrokerUrl(process.env.BROKER_URL || 'http://localhost:4800').replace(/\/+$/, '');
 const AGENT_ID     = process.env.AGENT_ID || os.hostname().toLowerCase().replace(/[^a-z0-9-]/g, '-');
 const AGENT_NAME   = process.env.AGENT_NAME || `SP-${AGENT_ID}`;
 const PROJECT_NAME = process.env.PROJECT_NAME || 'unknown';
@@ -99,7 +108,11 @@ async function brokerFetch(path, options = {}) {
       try { body = await res.json(); } catch { body = {}; }
       return { error: body.error || `HTTP ${res.status} ${res.statusText}` };
     }
-    return await res.json();
+    try {
+      return await res.json();
+    } catch {
+      return { error: `Resposta inválida do broker (não é JSON) em ${path}` };
+    }
   } catch (err) {
     if (err.name === 'TimeoutError') {
       return { error: `Broker não respondeu em ${FETCH_TIMEOUT_MS / 1000}s` };
@@ -149,7 +162,7 @@ async function register() {
 
 const server = new McpServer({
   name: 'skvil-piertotum',
-  version: '1.0.0',
+  version: PKG_VERSION,
   description: 'Comunicação entre instâncias do Claude Code via broker central'
 });
 
@@ -298,7 +311,10 @@ server.tool(
     // Marca as mensagens lidas explicitamente (ACK)
     const ids = result.messages.map(m => m.id).filter(Boolean);
     if (ids.length > 0) {
-      await brokerPost(`/messages/${AGENT_ID}/ack`, { ids });
+      const ackResult = await brokerPost(`/messages/${AGENT_ID}/ack`, { ids });
+      if (ackResult.error) {
+        process.stderr.write(`⚠️  ACK falhou: ${ackResult.error}\n`);
+      }
     }
 
     const lines = result.messages.map(m =>
@@ -356,7 +372,7 @@ server.tool(
     key: z.string().describe('Chave do contexto a ler (ex: "api-endpoints")')
   },
   async ({ key }) => {
-    const result = await brokerFetch(`/context/${key}`);
+    const result = await brokerFetch(`/context/${encodeURIComponent(key)}`);
 
     if (result.error) {
       return { content: [{ type: 'text', text: `❌ ${result.error}` }] };
@@ -583,7 +599,7 @@ async function processMessage(msg) {
 
     const responseText = sampling.content.type === 'text'
       ? sampling.content.text
-      : JSON.stringify(sampling.content);
+      : `[resposta não-texto do tipo "${sampling.content.type}" — não suportada pelo modo autônomo]`;
 
     // Envia resposta de volta ao remetente
     if (canReply) {
@@ -642,11 +658,17 @@ async function pollAndProcess() {
 
     // Processa uma mensagem por vez, em ordem; ACK individual após cada processamento
     for (const msg of result.messages) {
-      await processMessage(msg);
-      if (!autoProcessEnabled) break; // sampling falhou — não ACK nem continua o batch
+      try {
+        await processMessage(msg);
+      } catch (err) {
+        // ACK mesmo em erro para evitar poison message loop (retry infinito)
+        process.stderr.write(`⚠️  Erro ao processar mensagem ${msg.id}: ${err.message}\n`);
+      }
+      // ACK sempre — inclusive se processMessage falhou (evita poison loop)
       if (msg.id) {
         await brokerPost(`/messages/${AGENT_ID}/ack`, { ids: [msg.id] });
       }
+      if (!autoProcessEnabled) break; // sampling falhou — não continua o batch
     }
   } finally {
     isProcessing = false;
@@ -656,8 +678,10 @@ async function pollAndProcess() {
 function startAutonomousMode() {
   if (pollTimer) return; // já rodando
   process.stderr.write(`🤖 Modo autônomo ativado — polling a cada ${POLL_INTERVAL_MS / 1000}s\n`);
-  pollAndProcess(); // primeiro poll imediato — não espera o intervalo completo
-  pollTimer = setInterval(pollAndProcess, POLL_INTERVAL_MS);
+  pollAndProcess().catch(err => process.stderr.write(`⚠️  Erro no poll inicial: ${err.message}\n`));
+  pollTimer = setInterval(() => {
+    pollAndProcess().catch(err => process.stderr.write(`⚠️  Erro no poll: ${err.message}\n`));
+  }, POLL_INTERVAL_MS);
 }
 
 // ══════════════════════════════════════════════
@@ -709,7 +733,10 @@ async function main() {
   }, 30000);
 
   // Shutdown gracioso — aguarda processamento em andamento antes de sair
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     clearInterval(heartbeatTimer);
     if (pollTimer) clearInterval(pollTimer);
 

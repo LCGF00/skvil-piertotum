@@ -122,7 +122,7 @@ Orchestrators should call `sp_get_context("{agent_id}-status")` before delegatin
 ## Key Design Decisions
 
 - **In-memory only** — all state lost on broker restart. Heartbeat auto re-registers agents within 30s. Max 200 messages/queue (oldest dropped), 100 agents, 1000 context keys, 100 KB/value.
-- **Separate read/ACK** — `GET /messages` never auto-marks as read. Clients call `POST /messages/:id/ack` with explicit message IDs after successful processing. `sp_read` does this automatically.
+- **Separate read/ACK** — `GET /messages` never auto-marks as read. Clients call `POST /messages/:agentId/ack` with explicit message IDs after successful processing. `sp_read` does this automatically.
 - **Stale agent reaper** — runs every 30s; removes agents with no heartbeat for >90s (3 missed intervals). `sp_list_agents` flags agents >60s as stale before the reaper removes them.
 - **ES modules** — both files use `import/export` (`"type": "module"` in `package.json`).
 - **Message types enum** — `text`, `code`, `schema`, `endpoint`, `config`. Type `broadcast` was intentionally removed (was dead code).
@@ -135,14 +135,14 @@ Orchestrators should call `sp_get_context("{agent_id}-status")` before delegatin
 ```
 POST   /agents/register             Register (or re-register) an agent
 GET    /agents                      List all agents with lastSeen timestamps
-POST   /agents/:id/heartbeat        Heartbeat — 404 if not registered
-DELETE /agents/:id                  Deregister agent + clear its queue
+POST   /agents/:agentId/heartbeat    Heartbeat — 404 if not registered
+DELETE /agents/:agentId              Deregister agent + clear its queue
 
 POST   /messages/send               Send to one agent (404 if unknown)
 POST   /messages/broadcast          Send to all except sender
-GET    /messages/:id                Read queue (?unread=true, ?limit=N) — does NOT mark as read
-POST   /messages/:id/ack            Mark specific message IDs as read
-DELETE /messages/:id                Clear entire queue
+GET    /messages/:agentId            Read queue (?unread=true, ?limit=N) — does NOT mark as read
+POST   /messages/:agentId/ack       Mark specific message IDs as read
+DELETE /messages/:agentId            Clear entire queue
 
 POST   /context                     Save context (key + value required, max 100 KB)
 GET    /context                     List all context keys

@@ -33,7 +33,12 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 
-const PORT = process.env.BROKER_PORT || process.argv[2] || 4800;
+const _rawPort = process.env.BROKER_PORT || process.argv[2] || 4800;
+const PORT = Number(_rawPort);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  _error(`[ERRO] Porta inválida: "${_rawPort}". Use um número entre 1 e 65535.`);
+  process.exit(1);
+}
 
 // ══════════════════════════════════════════════
 // Limites de recursos
@@ -102,7 +107,8 @@ app.use((req, res, next) => {
     (req.method === 'POST' && req.path.endsWith('/heartbeat'));
   if (!isPolling) {
     const ts = new Date().toLocaleTimeString('pt-BR');
-    console.log(`[${ts}] ${req.method} ${req.path}`);
+    const safePath = req.originalUrl.replace(/[\x00-\x1f\x7f]/g, '');
+    console.log(`[${ts}] ${req.method} ${safePath}`);
   }
   next();
 });
@@ -115,6 +121,9 @@ app.post('/agents/register', (req, res) => {
   const { agentId, name, project, path } = req.body;
   if (!agentId || !name) {
     return res.status(400).json({ error: 'agentId e name são obrigatórios' });
+  }
+  if (typeof agentId !== 'string' || typeof name !== 'string') {
+    return res.status(400).json({ error: 'agentId e name devem ser strings' });
   }
 
   if (!agents.has(agentId) && agents.size >= MAX_AGENTS) {
@@ -190,6 +199,9 @@ app.post('/messages/send', (req, res) => {
   if (!from || !to || !content) {
     return res.status(400).json({ error: 'from, to e content são obrigatórios' });
   }
+  if (typeof from !== 'string' || typeof to !== 'string' || typeof content !== 'string') {
+    return res.status(400).json({ error: 'from, to e content devem ser strings' });
+  }
 
   if (!agents.has(from) && from !== 'broker') {
     return res.status(400).json({ error: `Remetente "${from}" não registrado. Registre-se antes de enviar mensagens.` });
@@ -227,6 +239,9 @@ app.post('/messages/broadcast', (req, res) => {
   if (!from || !content) {
     return res.status(400).json({ error: 'from e content são obrigatórios' });
   }
+  if (typeof from !== 'string' || typeof content !== 'string') {
+    return res.status(400).json({ error: 'from e content devem ser strings' });
+  }
 
   if (!agents.has(from) && from !== 'broker') {
     return res.status(400).json({ error: `Remetente "${from}" não registrado. Registre-se antes de enviar mensagens.` });
@@ -261,6 +276,9 @@ app.post('/messages/broadcast', (req, res) => {
 // ?unread=true → apenas não lidas | ?limit=N → máximo N mensagens
 // Não marca como lidas — use POST /messages/:agentId/ack para confirmar recebimento.
 app.get('/messages/:agentId', (req, res) => {
+  if (!agents.has(req.params.agentId)) {
+    return res.status(404).json({ error: `Agente "${req.params.agentId}" não registrado` });
+  }
   const queue = messages.get(req.params.agentId) || [];
   const unreadOnly = req.query.unread === 'true';
   const limit = req.query.limit ? Math.max(1, parseInt(req.query.limit, 10) || 50) : null;
@@ -274,6 +292,9 @@ app.get('/messages/:agentId', (req, res) => {
 
 // ACK — marca mensagens específicas como lidas
 app.post('/messages/:agentId/ack', (req, res) => {
+  if (!agents.has(req.params.agentId)) {
+    return res.status(404).json({ error: `Agente "${req.params.agentId}" não registrado` });
+  }
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: 'ids deve ser um array não-vazio de message IDs' });
@@ -365,6 +386,15 @@ app.use((req, res) => {
   res.status(404).json({ error: `Rota não encontrada: ${req.method} ${req.path}` });
 });
 
+// Error handler — retorna JSON em vez de HTML (ex: body JSON malformado)
+app.use((err, req, res, _next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'JSON inválido no body da requisição' });
+  }
+  _error(`[ERRO] ${err.stack || err.message}`);
+  res.status(err.status || 500).json({ error: 'Erro interno do servidor' });
+});
+
 // ══════════════════════════════════════════════
 // Console interativo do operador
 // ══════════════════════════════════════════════
@@ -454,8 +484,12 @@ function startConsole() {
   });
 
   rl.on('close', () => {
-    _log('\n  Broker encerrado.');
-    process.exit(0);
+    // Quando shutdown() chama rl.close(), o httpServer.close() cuida de sair.
+    // Só sai aqui se o readline fechou por conta própria (Ctrl+D).
+    if (!shuttingDown) {
+      _log('\n  Broker encerrado.');
+      process.exit(0);
+    }
   });
 }
 
@@ -505,7 +539,11 @@ httpServer.on('error', (err) => {
 // Shutdown gracioso (SIGTERM / SIGINT)
 // ══════════════════════════════════════════════
 
+let shuttingDown = false;
+
 const shutdown = () => {
+  if (shuttingDown) return; // evita dupla execução (SIGTERM + SIGINT rápidos)
+  shuttingDown = true;
   _log('\n  🛑 Broker encerrando...');
   if (rl) rl.close();
   httpServer.close(() => {

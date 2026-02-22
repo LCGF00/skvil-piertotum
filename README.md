@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png" width="150" alt="Skvil-Piertotum logo" />
+  <img src="https://raw.githubusercontent.com/LCGF00/skvil-piertotum/main/logo.png" width="150" alt="Skvil-Piertotum logo" />
 
 # Skvil-Piertotum
 
@@ -238,7 +238,7 @@ Enable autonomous processing mode
 
 Agents broadcast their availability via shared context under `{AGENT_ID}-status`:
 - `idle` — ready to receive tasks
-- `busy | task: ... | start: HH:MM:SS` — working
+- `busy | task: ... | início: HH:MM:SS` — working
 - `offline` — gracefully shut down
 
 > **Requirements:** The Claude Code client must support MCP Sampling. If it doesn't, the mode disables itself automatically and reports the reason in `sp_status`.
@@ -279,14 +279,14 @@ Full endpoint reference:
 ```
 POST   /agents/register             Register an agent
 GET    /agents                      List agents
-POST   /agents/:id/heartbeat        Heartbeat (404 if not registered)
-DELETE /agents/:id                  Deregister agent
+POST   /agents/:agentId/heartbeat    Heartbeat (404 if not registered)
+DELETE /agents/:agentId              Deregister agent
 
 POST   /messages/send               Send to one agent
 POST   /messages/broadcast          Send to all agents except sender
-GET    /messages/:id                Read messages (?unread=true, ?limit=N)
-POST   /messages/:id/ack            Mark message IDs as read
-DELETE /messages/:id                Clear all messages
+GET    /messages/:agentId            Read messages (?unread=true, ?limit=N)
+POST   /messages/:agentId/ack       Mark message IDs as read
+DELETE /messages/:agentId            Clear all messages
 
 POST   /context                     Save context entry
 GET    /context                     List context keys
