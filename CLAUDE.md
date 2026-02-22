@@ -22,8 +22,6 @@ node broker.js 5000
 BROKER_URL=http://localhost:4800 AGENT_ID=api AGENT_NAME="API Server" PROJECT_NAME=myproject node mcp-server.js
 ```
 
-No test or lint scripts are defined.
-
 ## Architecture
 
 ```
@@ -36,7 +34,7 @@ Broker terminal (operator types commands/messages)
 
 **`broker.js`** — Express HTTP server. Holds agents, message queues (Map per agentId), and shared context (key/value Map) entirely in memory. Also runs a readline console: plain text broadcasts to all agents, `@agentId message` targets one, `/agents` and `/help` are available commands.
 
-**`mcp-server.js`** — MCP stdio server per Claude Code instance. Auto-registers on startup, heartbeats every 30s (auto re-registers on 404 to recover from broker restarts), deregisters gracefully on SIGTERM/SIGINT (waits up to 10s for in-flight processing).
+**`mcp-server.js`** — MCP stdio server per Claude Code instance. Auto-registers on startup, heartbeats every 30s (auto re-registers on 404 to recover from broker restarts), deregisters gracefully on SIGTERM/SIGINT.
 
 ## Environment Variables
 
@@ -92,12 +90,18 @@ Agents publish state to shared context under `{AGENT_ID}-status`:
 
 Orchestrators should call `sp_get_context("{agent_id}-status")` before delegating.
 
+## Code Conventions
+
+- **Language** — all comments, error messages, tool descriptions, and console output are in **Brazilian Portuguese**.
+- **ES modules** — both files use `import/export` (`"type": "module"` in `package.json`).
+- **No tests or lint** — no test or lint scripts are defined. Validate changes by running `node broker.js` and `node mcp-server.js` manually.
+- **Two-file codebase** — all logic lives in `broker.js` and `mcp-server.js`. No build step.
+
 ## Key Design Decisions
 
 - **In-memory only** — all state lost on broker restart. Heartbeat auto re-registers agents within 30s. Max 200 messages/queue (oldest dropped), 100 agents, 1000 context keys, 100 KB/value.
 - **Separate read/ACK** — `GET /messages` never auto-marks as read. Clients call `POST /messages/:agentId/ack` with explicit message IDs after successful processing. `sp_read` does this automatically.
 - **Stale agent reaper** — runs every 30s; removes agents with no heartbeat for >90s (3 missed intervals). `sp_list_agents` flags agents >60s as stale before the reaper removes them.
-- **ES modules** — both files use `import/export` (`"type": "module"` in `package.json`).
 - **Message types enum** — `text`, `code`, `schema`, `endpoint`, `config`. Type `broadcast` was intentionally removed (was dead code).
 - **Broker operator messages** — `from: "broker"` / `fromName: "Operador"`.
 - **Fetch timeout** — all broker calls: 5s via `AbortSignal.timeout`; deregister on shutdown: 3s.
