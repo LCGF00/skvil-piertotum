@@ -3,8 +3,8 @@
 
 # Skvil-Piertotum
 
-[![npm version](https://img.shields.io/npm/v/skvil-piertotum)](https://www.npmjs.com/package/skvil-piertotum)
-[![Node.js](https://img.shields.io/node/v/skvil-piertotum)](https://nodejs.org)
+[![npm version](https://img.shields.io/npm/v/@skvil/piertotum)](https://www.npmjs.com/package/@skvil/piertotum)
+[![Node.js](https://img.shields.io/node/v/@skvil/piertotum)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 **Let your Claude Code instances talk to each other.**
@@ -49,6 +49,12 @@ When `AUTO_PROCESS=true`, the MCP server polls for incoming messages and uses **
 
 **Requirements:** Node.js 18 or later (`node --version` to check).
 
+**Option A — via npm (recommended):**
+```bash
+npm install -g @skvil/piertotum
+```
+
+**Option B — from source:**
 ```bash
 git clone https://github.com/LCGF00/skvil-piertotum
 cd skvil-piertotum
@@ -60,11 +66,17 @@ npm install
 Run this once, on any machine accessible to your terminals:
 
 ```bash
-node broker.js
+# if installed via npm:
+skvil-piertotum-broker
+
+# or with npx (no install needed):
+npx @skvil/piertotum skvil-piertotum-broker
+
 # custom port:
-node broker.js 5000
-# or via env:
-BROKER_PORT=5000 node broker.js
+skvil-piertotum-broker 5000
+
+# from source:
+node broker.js
 ```
 
 The broker listens on `0.0.0.0` — reachable from any IP on your network.
@@ -82,7 +94,7 @@ claude mcp add skvil-piertotum \
   -e AGENT_ID=api \
   -e AGENT_NAME="API Project" \
   -e PROJECT_NAME="my-saas" \
-  -- node /path/to/skvil-piertotum/mcp-server.js
+  -- skvil-piertotum-mcp
 
 # Terminal 2 — Frontend project
 claude mcp add skvil-piertotum \
@@ -90,8 +102,10 @@ claude mcp add skvil-piertotum \
   -e AGENT_ID=front \
   -e AGENT_NAME="Frontend Project" \
   -e PROJECT_NAME="my-saas" \
-  -- node /path/to/skvil-piertotum/mcp-server.js
+  -- skvil-piertotum-mcp
 ```
+
+> No global install? Use `npx @skvil/piertotum skvil-piertotum-mcp` instead of `skvil-piertotum-mcp`.
 
 If everything is on the same machine, use `BROKER_URL=http://localhost:4800`.
 
@@ -102,8 +116,8 @@ If everything is on the same machine, use `BROKER_URL=http://localhost:4800`.
   "mcpServers": {
     "skvil-piertotum": {
       "type": "stdio",
-      "command": "node",
-      "args": ["/absolute/path/to/skvil-piertotum/mcp-server.js"],
+      "command": "skvil-piertotum-mcp",
+      "args": [],
       "env": {
         "BROKER_URL": "http://192.168.1.10:4800",
         "AGENT_ID": "api",
