@@ -298,6 +298,16 @@ Each developer registers their terminal. Share schemas, decisions, and context a
 ## Contributing
 
 Issues and pull requests are welcome. For non-trivial changes, please open an issue first to discuss the approach.
+---
+
+## Why "Piertotum"?
+
+<div align="center">
+
+https://github.com/user-attachments/assets/8d762cbc-62e1-4d3c-9ab7-07f0a7e64c9a
+
+</div>
+
 
 ## License
 
