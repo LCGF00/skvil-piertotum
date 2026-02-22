@@ -1,8 +1,13 @@
+<div align="center">
+  <img src="logo.png" width="150" alt="Skvil-Piertotum logo" />
+
 # Skvil-Piertotum
 
 **Let your Claude Code instances talk to each other.**
 
 Skvil-Piertotum is a lightweight MCP + HTTP broker that connects multiple Claude Code terminals — across projects, machines, WSL, or VMs — so they can exchange messages, share context, and even delegate tasks autonomously.
+
+</div>
 
 ```
 Claude Code (API project)          Claude Code (Frontend project)
